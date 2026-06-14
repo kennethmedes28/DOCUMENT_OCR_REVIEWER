@@ -31,6 +31,27 @@ pip install -r requirements.txt
 
 ## Usage
 
+### Shell script (recommended)
+
+`run_ocr.sh` wraps the Python CLI, handles venv activation, and checks system
+dependencies automatically.
+
+```bash
+# First-time setup (installs Python deps into .venv)
+./run_ocr.sh --install
+
+# Basic run
+./run_ocr.sh --input invoice.pdf
+
+# Full options
+./run_ocr.sh -i scan.pdf -o out.html -j out.json --dpi 400 --pages 1-3
+
+# GPU engine
+./run_ocr.sh -i doc.pdf --engine easyocr --device cuda
+```
+
+### Python directly
+
 ```bash
 python ocr_checker.py \
   --input document.pdf \
@@ -88,6 +109,7 @@ alongside a scrollable, clickable sentence list (hover/click links the two).
 
 ```
 OCR/
+├── run_ocr.sh                ← Linux shell script (setup + run)
 ├── ocr_checker.py            ← CLI entry point / orchestrator
 ├── modules/
 │   ├── pdf_rasterizer.py     ← PDF → images
