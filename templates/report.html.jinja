@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OCR Error Report</title>
+<style>
+  :root {
+    --clean: #22c55e; --minor: #eab308; --moderate: #f97316; --critical: #ef4444;
+    --bg: #0f172a; --panel: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
+         background: var(--bg); color: var(--text); }
+  header { padding: 16px 24px; background: var(--panel); position: sticky; top: 0;
+           z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  header h1 { margin: 0 0 8px; font-size: 18px; }
+  .summary { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .summary b { color: var(--text); }
+  .chip { padding: 2px 8px; border-radius: 999px; font-weight: 600; color: #0f172a; }
+  .chip.clean { background: var(--clean); } .chip.minor { background: var(--minor); }
+  .chip.moderate { background: var(--moderate); } .chip.critical { background: var(--critical); color:#fff; }
+  .page { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+          gap: 16px; padding: 16px 24px; align-items: start; }
+  .page h2 { grid-column: 1 / -1; margin: 8px 0 0; font-size: 15px; color: var(--muted); }
+  .image-wrap { position: relative; background: var(--panel); border-radius: 8px;
+                overflow: hidden; }
+  .image-wrap img { width: 100%; display: block; }
+  .hotspot { position: absolute; border: 2px solid transparent; cursor: pointer;
+             transition: background .15s; }
+  .hotspot:hover, .hotspot.active { background: rgba(255,255,255,.25); }
+  .sidebar { display: flex; flex-direction: column; gap: 8px; max-height: 90vh;
+             overflow-y: auto; }
+  .sentence { background: var(--panel); border-left: 4px solid var(--moderate);
+              border-radius: 6px; padding: 10px 12px; cursor: pointer; }
+  .sentence.clean { border-color: var(--clean); } .sentence.minor { border-color: var(--minor); }
+  .sentence.moderate { border-color: var(--moderate); } .sentence.critical { border-color: var(--critical); }
+  .sentence.active { outline: 2px solid var(--text); }
+  .sentence .top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+  .sentence .pct { font-weight: 700; }
+  .sentence .txt { margin: 6px 0; font-size: 14px; line-height: 1.4; }
+  .breakdown { display: flex; gap: 10px; font-size: 11px; color: var(--muted); }
+  .issues { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--muted); }
+  .issues li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OCR Error Detection Report</h1>
+  <div class="summary">
+    <span><b>{{ summary.get('pages', 0) }}</b> pages</span>
+    <span><b>{{ summary.get('total_sentences', 0) }}</b> sentences</span>
+    <span>Avg error <b>{{ summary.get('avg_error_pct', 0) }}%</b></span>
+    {% set dist = summary.get('distribution', {}) %}
+    <span class="chip clean">{{ dist.get('clean', 0) }} clean</span>
+    <span class="chip minor">{{ dist.get('minor', 0) }} minor</span>
+    <span class="chip moderate">{{ dist.get('moderate', 0) }} moderate</span>
+    <span class="chip critical">{{ dist.get('critical', 0) }} critical</span>
+  </div>
+</header>
+
+{% for page in pages %}
+<section class="page">
+  <h2>Page {{ page.page }}</h2>
+  <div class="image-wrap">
+    <img src="data:image/jpeg;base64,{{ page.image_b64 }}" alt="Page {{ page.page }}" />
+    {% for s in page.sentences %}
+    {% set bb = s.bounding_box %}
+    <div class="hotspot" id="hot-{{ s.sentence_id }}"
+         data-id="{{ s.sentence_id }}"
+         style="left:{{ bb.x_pct }}%; top:{{ bb.y_pct }}%; width:{{ bb.w_pct }}%; height:{{ bb.h_pct }}%;"></div>
+    {% endfor %}
+  </div>
+  <div class="sidebar">
+    {% for s in page.sentences %}
+    <div class="sentence {{ s.severity }}" id="sent-{{ s.sentence_id }}" data-id="{{ s.sentence_id }}">
+      <div class="top">
+        <span>{{ s.sentence_id }} · {{ s.severity }}</span>
+        <span class="pct">{{ '%.0f'|format(s.scores.composite_error_pct) }}%</span>
+      </div>
+      <div class="txt">{{ s.text }}</div>
+      <div class="breakdown">
+        <span>typo {{ '%.0f'|format(s.scores.typo_score) }}%</span>
+        <span>incon {{ '%.0f'|format(s.scores.inconsistency_score) }}%</span>
+        <span>read {{ '%.0f'|format(s.scores.readability_score) }}%</span>
+      </div>
+      {% if s.issues %}
+      <ul class="issues">
+        {% for issue in s.issues %}
+          {% if issue.type == 'typo' %}
+          <li>typo: <b>{{ issue.word }}</b> → {{ issue.suggestion }}</li>
+          {% else %}
+          <li>{{ issue.message }}</li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+<script>
+  // Two-way highlight between image hotspots and sidebar sentences.
+  function link(id) {
+    const hot = document.getElementById('hot-' + id);
+    const sent = document.getElementById('sent-' + id);
+    const on = () => { hot && hot.classList.add('active'); sent && sent.classList.add('active'); };
+    const off = () => { hot && hot.classList.remove('active'); sent && sent.classList.remove('active'); };
+    [hot, sent].forEach(el => {
+      if (!el) return;
+      el.addEventListener('mouseenter', on);
+      el.addEventListener('mouseleave', off);
+      el.addEventListener('click', () => {
+        (el === hot ? sent : hot)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
+  }
+  document.querySelectorAll('.hotspot').forEach(h => link(h.dataset.id));
+</script>
+</body>
+</html>

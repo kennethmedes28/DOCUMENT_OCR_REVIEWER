@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+results.json
+report.html
+*.egg-info/
+
+.pdf
+.html
+.json
+usage.txt
+CLAUDE.md
