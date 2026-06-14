@@ -4,9 +4,12 @@ __pycache__/
 results.json
 report.html
 *.egg-info/
+.pytest_cache
+__init__.py
+*.jinja
 
-.pdf
-.html
+*.pdf
+*.html
 .json
 usage.txt
 CLAUDE.md
