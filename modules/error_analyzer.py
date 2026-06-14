@@ -14,12 +14,12 @@ from __future__ import annotations
 
 from spellchecker import SpellChecker
 
-# Composite weights — must sum to 1.0 (see CLAUDE.md §2).
+# Composite weights — must sum to 1.0.
 WEIGHT_TYPO = 0.40
 WEIGHT_INCONSISTENCY = 0.35
 WEIGHT_READABILITY = 0.25
 
-# Score → severity bands (see CLAUDE.md §2).
+# Score → severity bands.
 SEVERITY_BANDS = (
     (15, "clean"),
     (40, "minor"),
@@ -102,7 +102,7 @@ class ErrorAnalyzer:
 
 
 def compute_composite(typo: float, inconsistency: float, readability: float) -> float:
-    """Weighted blend of the three signals (see CLAUDE.md §2)."""
+    """Weighted blend of the three signals."""
     return round(
         typo * WEIGHT_TYPO
         + inconsistency * WEIGHT_INCONSISTENCY

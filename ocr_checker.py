@@ -1,6 +1,5 @@
 """OCR Error Detection Tool — CLI entry point / orchestrator.
 
-Pipeline (see CLAUDE.md §3):
     PDF → rasterize → OCR → assemble sentences → score errors → report
 
 Usage:

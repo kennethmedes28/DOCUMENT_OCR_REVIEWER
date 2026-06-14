@@ -9,7 +9,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from PIL import Image, ImageDraw, ImageFont
 
-# RGBA fills keyed by severity (see CLAUDE.md §7 legend).
+# RGBA fills keyed by severity.
 SEVERITY_COLORS = {
     "clean": (34, 197, 94, 120),  # green
     "minor": (234, 179, 8, 140),  # yellow
