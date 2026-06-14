@@ -6,9 +6,6 @@ report.html
 *.egg-info/
 .pytest_cache
 __init__.py
-*.jinja
-report.html.jinja
-
 *.pdf
 *.html
 .json

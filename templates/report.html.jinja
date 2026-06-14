@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OCR Error Detection Report</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --surface2:  #22263a;
+    --border:    #2d3148;
+    --text:      #e2e8f0;
+    --muted:     #8892a4;
+    --clean:     #22c55e;
+    --minor:     #eab308;
+    --moderate:  #f97316;
+    --critical:  #ef4444;
+    --clean-bg:  rgba(34,197,94,.12);
+    --minor-bg:  rgba(234,179,8,.12);
+    --moderate-bg: rgba(249,115,22,.12);
+    --critical-bg: rgba(239,68,68,.12);
+    --highlight: rgba(96,165,250,.25);
+    --highlight-border: #60a5fa;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  header h1 {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -.3px;
+    white-space: nowrap;
+  }
+
+  .stats {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .stat { color: var(--muted); white-space: nowrap; }
+  .stat strong { color: var(--text); }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: opacity .15s;
+  }
+  .pill:hover { opacity: .8; }
+  .pill.clean    { background: var(--clean-bg);    color: var(--clean);    border-color: var(--clean); }
+  .pill.minor    { background: var(--minor-bg);    color: var(--minor);    border-color: var(--minor); }
+  .pill.moderate { background: var(--moderate-bg); color: var(--moderate); border-color: var(--moderate); }
+  .pill.critical { background: var(--critical-bg); color: var(--critical); border-color: var(--critical); }
+  .pill.active { opacity: 1; box-shadow: 0 0 0 2px currentColor; }
+
+  /* ── Page tabs ───────────────────────────────────────────── */
+  .page-tabs {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 2px;
+    padding: 0 16px;
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+
+  .page-tab {
+    padding: 9px 16px;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s;
+  }
+  .page-tab:hover { color: var(--text); }
+  .page-tab.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+
+  /* ── Main layout ─────────────────────────────────────────── */
+  .workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ── Image panel ─────────────────────────────────────────── */
+  .image-panel {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    background: #0a0c13;
+    padding: 16px;
+  }
+
+  .page-view { display: none; }
+  .page-view.active { display: block; }
+
+  .image-wrapper {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+  }
+
+  .image-wrapper img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.6);
+  }
+
+  /* interactive hit areas over the image */
+  .hit-box {
+    position: absolute;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: background .15s, border-color .15s;
+  }
+  .hit-box:hover { background: var(--highlight) !important; border-color: var(--highlight-border) !important; }
+  .hit-box.highlighted { background: var(--highlight) !important; border-color: var(--highlight-border) !important; }
+
+  /* ── Sentence panel ───────────────────────────────────────── */
+  .sentence-panel {
+    width: 360px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 10px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--muted);
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .sentence-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    scroll-behavior: smooth;
+  }
+
+  /* sentence card */
+  .sent-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    display: none; /* hidden by default; shown by active page */
+  }
+  .sent-card.page-active { display: block; }
+  .sent-card:hover { background: var(--surface2); border-color: #3d4163; }
+  .sent-card.highlighted { background: var(--surface2); }
+
+  .sent-card.clean    { border-left-color: var(--clean); }
+  .sent-card.minor    { border-left-color: var(--minor); }
+  .sent-card.moderate { border-left-color: var(--moderate); }
+  .sent-card.critical { border-left-color: var(--critical); }
+  .sent-card.highlighted { border-color: var(--highlight-border); background: rgba(96,165,250,.08); }
+
+  .sent-card.filtered-out { display: none !important; }
+
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .card-id {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .card-severity {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    padding: 1px 7px;
+    border-radius: 10px;
+  }
+  .sev-clean    { background: var(--clean-bg);    color: var(--clean); }
+  .sev-minor    { background: var(--minor-bg);    color: var(--minor); }
+  .sev-moderate { background: var(--moderate-bg); color: var(--moderate); }
+  .sev-critical { background: var(--critical-bg); color: var(--critical); }
+
+  .card-score {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .score-clean    { color: var(--clean); }
+  .score-minor    { color: var(--minor); }
+  .score-moderate { color: var(--moderate); }
+  .score-critical { color: var(--critical); }
+
+  .card-text {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* score bars */
+  .score-bars { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .score-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+  }
+  .score-label { width: 60px; color: var(--muted); flex-shrink: 0; }
+  .bar-track {
+    flex: 1;
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .3s ease;
+  }
+  .bar-typo     { background: #a78bfa; }
+  .bar-incon    { background: #38bdf8; }
+  .bar-read     { background: #fb923c; }
+  .score-val { width: 30px; text-align: right; color: var(--muted); }
+
+  /* issues */
+  .issues-toggle {
+    font-size: 10.5px;
+    color: #60a5fa;
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .issues-toggle:hover { text-decoration: underline; }
+
+  .issues-list {
+    margin-top: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .issues-list.open { display: flex; }
+
+  .issue-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 11px;
+    padding: 4px 7px;
+    background: var(--surface2);
+    border-radius: 4px;
+  }
+  .issue-type {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .type-typo    { background: rgba(167,139,250,.2); color: #a78bfa; }
+  .type-grammar { background: rgba(56,189,248,.2);  color: #38bdf8; }
+  .issue-word { color: var(--text); font-weight: 600; }
+  .issue-arrow { color: var(--muted); }
+  .issue-sug  { color: var(--clean); }
+  .no-sug     { color: var(--muted); font-style: italic; }
+
+  /* ── Scrollbars ──────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3d4163; }
+
+  /* ── No-issues badge ─────────────────────────────────────── */
+  .no-issues {
+    font-size: 10.5px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ── Legend ──────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 10.5px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 3px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<header>
+  <h1>OCR Error Detection Report</h1>
+  <div class="stats">
+    <span class="stat"><strong>{{ summary.pages }}</strong> page{{ 's' if summary.pages != 1 }}</span>
+    <span class="stat"><strong>{{ summary.total_sentences }}</strong> sentences</span>
+    <span class="stat">Avg error <strong>{{ "%.1f"|format(summary.avg_error_pct) }}%</strong></span>
+  </div>
+  <div class="stats" id="filter-pills">
+    <span class="pill clean   active" data-filter="clean"    onclick="toggleFilter(this)">{{ summary.distribution.clean }}    clean</span>
+    <span class="pill minor   active" data-filter="minor"    onclick="toggleFilter(this)">{{ summary.distribution.minor }}   minor</span>
+    <span class="pill moderate active" data-filter="moderate" onclick="toggleFilter(this)">{{ summary.distribution.moderate }} moderate</span>
+    <span class="pill critical active" data-filter="critical"  onclick="toggleFilter(this)">{{ summary.distribution.critical }} critical</span>
+  </div>
+</header>
+
+<!-- ── Page tabs ───────────────────────────────────────────── -->
+{% if pages | length > 1 %}
+<div class="page-tabs" id="page-tabs">
+  {% for p in pages %}
+  <div class="page-tab {% if loop.first %}active{% endif %}"
+       data-page="{{ p.page }}"
+       onclick="switchPage({{ p.page }})">Page {{ p.page }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Workspace ───────────────────────────────────────────── -->
+<div class="workspace">
+
+  <!-- Image panel -->
+  <div class="image-panel" id="image-panel">
+    {% for p in pages %}
+    <div class="page-view {% if loop.first %}active{% endif %}" data-page="{{ p.page }}">
+      <div class="image-wrapper" id="wrapper-{{ p.page }}">
+        <img src="data:image/jpeg;base64,{{ p.image_b64 }}"
+             alt="Page {{ p.page }}"
+             id="img-{{ p.page }}"
+             onload="placeHitBoxes({{ p.page }})" />
+        <!-- hit boxes injected by JS after image loads -->
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Sentence panel -->
+  <div class="sentence-panel">
+    <div class="panel-header">
+      <span>Sentences</span>
+      <span class="legend">
+        <span><span class="legend-dot" style="background:var(--clean)"></span>Clean</span>
+        <span><span class="legend-dot" style="background:var(--minor)"></span>Minor</span>
+        <span><span class="legend-dot" style="background:var(--moderate)"></span>Moderate</span>
+        <span><span class="legend-dot" style="background:var(--critical)"></span>Critical</span>
+      </span>
+    </div>
+    <div class="sentence-list" id="sentence-list">
+      {% for p in pages %}
+        {% for s in p.sentences %}
+        <div class="sent-card {{ s.severity }} {% if loop.first and loop.index0 == 0 %}page-active{% endif %}"
+             id="card-{{ s.sentence_id }}"
+             data-id="{{ s.sentence_id }}"
+             data-page="{{ p.page }}"
+             data-severity="{{ s.severity }}"
+             onclick="selectSentence('{{ s.sentence_id }}')">
+
+          <div class="card-head">
+            <span class="card-id">{{ s.sentence_id }}</span>
+            <span class="card-severity sev-{{ s.severity }}">{{ s.severity }}</span>
+          </div>
+
+          <div class="card-score score-{{ s.severity }}">
+            {{ "%.0f"|format(s.scores.composite_error_pct) }}%
+          </div>
+
+          <div class="card-text">{{ s.text }}</div>
+
+          <div class="score-bars">
+            <div class="score-row">
+              <span class="score-label">Typo</span>
+              <div class="bar-track">
+                <div class="bar-fill bar-typo" style="width:{{ s.scores.typo_score }}%"></div>
+              </div>
+              <span class="score-val">{{ "%.0f"|format(s.scores.typo_score) }}%</span>
+            </div>
+            <div class="score-row">
+              <span class="score-label">Inconsistency</span>
+              <div class="bar-track">
+                <div class="bar-fill bar-incon" style="width:{{ s.scores.inconsistency_score }}%"></div>
+              </div>
+              <span class="score-val">{{ "%.0f"|format(s.scores.inconsistency_score) }}%</span>
+            </div>
+            <div class="score-row">
+              <span class="score-label">Readability</span>
+              <div class="bar-track">
+                <div class="bar-fill bar-read" style="width:{{ s.scores.readability_score }}%"></div>
+              </div>
+              <span class="score-val">{{ "%.0f"|format(s.scores.readability_score) }}%</span>
+            </div>
+          </div>
+
+          {% if s.issues %}
+          <span class="issues-toggle" onclick="toggleIssues(event, '{{ s.sentence_id }}')">
+            <span id="toggle-icon-{{ s.sentence_id }}">▶</span>
+            {{ s.issues | length }} issue{{ 's' if s.issues | length != 1 }}
+          </span>
+          <div class="issues-list" id="issues-{{ s.sentence_id }}">
+            {% for issue in s.issues %}
+            <div class="issue-row">
+              <span class="issue-type type-{{ issue.type }}">{{ issue.type }}</span>
+              {% if issue.type == 'typo' %}
+                <span class="issue-word">{{ issue.word }}</span>
+                {% if issue.suggestion %}
+                  <span class="issue-arrow">→</span>
+                  <span class="issue-sug">{{ issue.suggestion }}</span>
+                {% else %}
+                  <span class="no-sug">(no suggestion)</span>
+                {% endif %}
+              {% else %}
+                <span class="issue-word">{{ issue.message }}</span>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <span class="no-issues">No issues detected</span>
+          {% endif %}
+
+        </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Embedded sentence data for JS ─────────────────────────── -->
+<script>
+const SENTENCE_DATA = {
+  {% for p in pages %}
+  {% for s in p.sentences %}
+  "{{ s.sentence_id }}": {
+    page: {{ p.page }},
+    severity: "{{ s.severity }}",
+    bbox: {
+      x_pct: {{ s.bounding_box.x_pct }},
+      y_pct: {{ s.bounding_box.y_pct }},
+      w_pct: {{ s.bounding_box.w_pct }},
+      h_pct: {{ s.bounding_box.h_pct }}
+    }
+  },
+  {% endfor %}
+  {% endfor %}
+};
+
+const SEVERITY_COLORS = {
+  clean:    "rgba(34,197,94,",
+  minor:    "rgba(234,179,8,",
+  moderate: "rgba(249,115,22,",
+  critical: "rgba(239,68,68,"
+};
+
+let activePage = {{ pages[0].page }};
+let activeId   = null;
+let activeFilters = new Set(["clean","minor","moderate","critical"]);
+
+// ── Page switching ───────────────────────────────────────────
+function switchPage(page) {
+  activePage = page;
+
+  // image views
+  document.querySelectorAll(".page-view").forEach(el => {
+    el.classList.toggle("active", +el.dataset.page === page);
+  });
+
+  // tabs
+  document.querySelectorAll(".page-tab").forEach(el => {
+    el.classList.toggle("active", +el.dataset.page === page);
+  });
+
+  // sidebar cards
+  document.querySelectorAll(".sent-card").forEach(el => {
+    const onPage = +el.dataset.page === page;
+    el.classList.toggle("page-active", onPage);
+    // re-apply filter visibility
+    if (onPage && activeFilters.has(el.dataset.severity)) {
+      el.classList.remove("filtered-out");
+    } else if (onPage) {
+      el.classList.add("filtered-out");
+    }
+  });
+
+  activeId = null;
+}
+
+// ── Severity filter ──────────────────────────────────────────
+function toggleFilter(pill) {
+  const sev = pill.dataset.filter;
+  if (activeFilters.has(sev)) {
+    if (activeFilters.size === 1) return; // keep at least one
+    activeFilters.delete(sev);
+    pill.classList.remove("active");
+  } else {
+    activeFilters.add(sev);
+    pill.classList.add("active");
+  }
+  // update card visibility
+  document.querySelectorAll(".sent-card.page-active").forEach(el => {
+    el.classList.toggle("filtered-out", !activeFilters.has(el.dataset.severity));
+  });
+}
+
+// ── Place hit boxes after image loads ───────────────────────
+function placeHitBoxes(page) {
+  const img     = document.getElementById("img-" + page);
+  const wrapper = document.getElementById("wrapper-" + page);
+  if (!img || !wrapper) return;
+
+  Object.entries(SENTENCE_DATA).forEach(([id, d]) => {
+    if (d.page !== page) return;
+    const col  = SEVERITY_COLORS[d.severity] || SEVERITY_COLORS.moderate;
+    const box  = document.createElement("div");
+    box.className   = "hit-box";
+    box.id          = "box-" + id;
+    box.dataset.id  = id;
+    box.title       = id;
+    box.style.left   = d.bbox.x_pct + "%";
+    box.style.top    = d.bbox.y_pct + "%";
+    box.style.width  = d.bbox.w_pct + "%";
+    box.style.height = d.bbox.h_pct + "%";
+    box.style.background   = col + "0.08)";
+    box.style.borderColor  = col + "0.6)";
+    box.onclick = () => selectSentence(id);
+    wrapper.appendChild(box);
+  });
+}
+
+// ── Select / highlight a sentence ───────────────────────────
+function selectSentence(id) {
+  if (!id || !SENTENCE_DATA[id]) return;
+
+  // clear previous
+  if (activeId) {
+    const prevCard = document.getElementById("card-" + activeId);
+    const prevBox  = document.getElementById("box-"  + activeId);
+    if (prevCard) prevCard.classList.remove("highlighted");
+    if (prevBox)  prevBox.classList.remove("highlighted");
+  }
+
+  // switch page if needed
+  const page = SENTENCE_DATA[id].page;
+  if (page !== activePage) switchPage(page);
+
+  activeId = id;
+
+  const card = document.getElementById("card-" + id);
+  const box  = document.getElementById("box-"  + id);
+
+  if (card) {
+    card.classList.add("highlighted");
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  if (box) {
+    box.classList.add("highlighted");
+    box.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+// ── Toggle issues list ───────────────────────────────────────
+function toggleIssues(event, id) {
+  event.stopPropagation();
+  const list = document.getElementById("issues-" + id);
+  const icon = document.getElementById("toggle-icon-" + id);
+  if (!list) return;
+  const isOpen = list.classList.toggle("open");
+  if (icon) icon.textContent = isOpen ? "▼" : "▶";
+}
+
+// ── Init: show cards for first page ─────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".sent-card").forEach(el => {
+    if (+el.dataset.page === activePage) el.classList.add("page-active");
+  });
+});
+</script>
+</body>
+</html>
